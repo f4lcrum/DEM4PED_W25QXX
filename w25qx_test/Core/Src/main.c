@@ -21,6 +21,13 @@
 #include "W25Qxx.h"
 #include "ssd1306.h"
 #include "fonts.h"
+
+//Connect ADDR pin to GND and I2C slave adress will be 0X48 .
+#define ADS1115_ADDRESS 0x48
+unsigned char ADSwrite[6];
+int16_t reading;
+float voltage[4];
+const float voltageConv = 6.114 / 32768.0;
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
@@ -93,7 +100,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+	char str[100];
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -126,9 +133,9 @@ int main(void)
     }
 
   HAL_Delay(1000);
-  for (int i = 0; i <= 128; i+= 18) {
+  for (int i = 0; i <= 110; i+= 18) {
 	 ssd1306_SetCursor(0, i);
-	 ssd1306_WriteString("ABCDEFGH", Font_11x18, White);
+	 ssd1306_WriteString("abcdefgh", Font_11x18, White);
   }
 
 
@@ -142,8 +149,54 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
+	  for(int i=0; i< 4; i++){
+	  			ADSwrite[0] = 0x01;
 
-    /* USER CODE BEGIN 3 */
+	  			switch(i){
+	  				case(0):
+	  					ADSwrite[1] = 0xC1; //11000001
+	  				break;
+	  				case(1):
+	  					ADSwrite[1] = 0xD1; //11010001
+	  				break;
+	  				case(2):
+	  					ADSwrite[1] = 0xE1;
+	  				break;
+	  				case(3):
+	  					ADSwrite[1] = 0xF1;
+	  				break;
+	  			}
+
+	  			ADSwrite[2] = 0x83; //10000011 LSB
+
+	  			HAL_I2C_Master_Transmit(&hi2c2, ADS1115_ADDRESS << 1, ADSwrite, 3, 100);
+	  			ADSwrite[0] = 0x00;
+	  			HAL_I2C_Master_Transmit(&hi2c2, ADS1115_ADDRESS << 1 , ADSwrite, 1 ,100);
+	  			HAL_Delay(20);
+
+	  			HAL_I2C_Master_Receive(&hi2c2, ADS1115_ADDRESS <<1, ADSwrite, 2, 100);
+	  			reading = (ADSwrite[0] << 8 | ADSwrite[1] );
+	  			if(reading < 0) {
+	  				reading = 0;
+	  			}
+	  			voltage[i] = reading * voltageConv;
+
+	  		}
+
+
+	  W25Q_Write_NUM(0, 10, voltage[1]);
+	  float rNum1 = W25Q_Read_NUM(0, 10);
+	  char *tmpSign = (rNum1 < 0) ? "-" : "";
+	  float tmpVal = (rNum1 < 0) ? -rNum1 : rNum1;
+	  int tmpInt1 = tmpVal;                  // Get the integer
+	  float tmpFrac = tmpVal - tmpInt1;      // Get fraction
+	  int tmpInt2 = trunc(tmpFrac * 10000);  // Turn into integer
+	  sprintf(str, "%s%d.%04d", tmpSign, tmpInt1, tmpInt2);
+	  ssd1306_SetCursor(0, 0);
+	  ssd1306_WriteString(str, Font_11x18, White);
+	  ssd1306_UpdateScreen(&hi2c2);
+
+	  /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
